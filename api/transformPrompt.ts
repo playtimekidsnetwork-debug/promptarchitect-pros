@@ -7,11 +7,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ error: "Use POST" });
     }
 
-    const { userInput } = (req.body as any) || {};
+    const { userInput } = (req.body ?? {}) as { userInput?: string };
+
     if (!userInput || typeof userInput !== "string") {
       return res.status(400).json({ error: "Missing userInput" });
     }
 
+    // Server-only env var (set in Vercel Project Settings → Environment Variables)
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "GEMINI_API_KEY not set on server" });
@@ -20,25 +22,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `
-You are PromptArchitect Pro — an expert prompt engineer.
-
-Transform messy user requests into a complete, reusable, high-quality AI prompt that works across ChatGPT, Gemini, Claude, etc.
+You are an expert AI Prompt Engineer and Research Assistant.
+Transform a simple user request into a complete, high-quality, accurate, reusable AI prompt.
 
 Rules:
-1) Identify the user's real goal.
-2) Infer target audience if implied.
-3) Add missing context.
-4) Assign a clear expert role.
-5) Define constraints (tone, length, format, tools, what to avoid).
+1) Identify the user's true goal and intent.
+2) Identify target audience if implied.
+3) Add necessary context.
+4) Assign a clear expert role to the AI.
+5) Define constraints (tone, length, format, tools, limitations).
 6) Specify output format clearly.
-7) Avoid hallucinations; be factual.
-8) If region/time matters, state assumptions.
-9) Ask max TWO follow-up questions only if essential.
+7) Ensure factual accuracy and avoid hallucination.
+8) If info varies by region/time, include assumptions.
+9) Ask MAXIMUM of TWO follow-up questions only.
 Return JSON only.
-    `.trim();
+`.trim();
 
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+      // ✅ Use a real current model ID
+      model: model: "gemini-1.5-pro",
       contents: userInput,
       config: {
         systemInstruction,
@@ -52,18 +54,29 @@ Return JSON only.
             task: { type: Type.STRING },
             constraints: { type: Type.STRING },
             outputFormat: { type: Type.STRING },
-            followUpQuestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+            followUpQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
           },
-          required: ["title", "aiRole", "context", "task", "constraints", "outputFormat", "followUpQuestions"]
-        }
-      }
+          required: [
+            "title",
+            "aiRole",
+            "context",
+            "task",
+            "constraints",
+            "outputFormat",
+            "followUpQuestions",
+          ],
+        },
+      },
     });
 
     const text = response.text;
     if (!text) return res.status(500).json({ error: "No response text from Gemini" });
 
+    // Return parsed JSON to the frontend
     return res.status(200).json(JSON.parse(text));
   } catch (err: any) {
-    return res.status(500).json({ error: err?.message || "Server error" });
+    return res.status(500).json({
+      error: err?.message || "Server error",
+    });
   }
 }
